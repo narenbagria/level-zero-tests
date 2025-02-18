@@ -324,7 +324,7 @@ executeMatrixMultiplyWorkload(ze_device_handle_t device,
   void *a_buffer, *b_buffer, *c_buffer;
   ze_group_count_t tg;
   ze_kernel_handle_t function = get_matrix_multiplication_kernel(
-      device, &tg, &a_buffer, &b_buffer, &c_buffer);
+      device, &tg, &a_buffer, &b_buffer, &c_buffer, 64);
 
   zeCommandListAppendLaunchKernel(commandList, function, &tg, nullptr, 0,
                                   nullptr);
@@ -739,6 +739,39 @@ TEST_F(
           device_with_metric_group_handles.activatable_metric_group_handle_list
               .data());
 
+      zet_metric_group_properties_t metricGroupProp = {};
+      metricGroupProp.stype = ZET_STRUCTURE_TYPE_METRIC_GROUP_PROPERTIES;
+      metricGroupProp.pNext = nullptr;
+      uint64_t globalTimestamp;
+      uint64_t metricTimestamp;
+      ze_bool_t synchronizedWithHost;
+
+      for (auto metricGroupHandle : device_with_metric_group_handles
+                                        .activatable_metric_group_handle_list) {
+        EXPECT_EQ(ZE_RESULT_SUCCESS, zetMetricGroupGetProperties(
+                                         metricGroupHandle, &metricGroupProp));
+        synchronizedWithHost = true;
+        std::cout << "Metric group name: " << metricGroupProp.name
+                  << ". Metric Domain: " << metricGroupProp.domain << std::endl;
+        EXPECT_EQ(ZE_RESULT_SUCCESS,
+                  zetMetricGroupGetGlobalTimestampsExp(
+                      metricGroupHandle, synchronizedWithHost, &globalTimestamp,
+                      &metricTimestamp));
+        std::cout << "******************* Host timestamp " << globalTimestamp
+                  << ". Metrics timestamp: " << metricTimestamp << std::endl;
+
+        synchronizedWithHost = false;
+        std::cout << "******************* Metric group name: "
+                  << metricGroupProp.name
+                  << ". Metric Domain: " << metricGroupProp.domain << std::endl;
+        EXPECT_EQ(ZE_RESULT_SUCCESS,
+                  zetMetricGroupGetGlobalTimestampsExp(
+                      metricGroupHandle, synchronizedWithHost, &globalTimestamp,
+                      &metricTimestamp));
+        std::cout << "******************* Device timestamp " << globalTimestamp
+                  << ". Metrics timestamp: " << metricTimestamp << std::endl;
+      }
+
       LOG_DEBUG << "create tracer";
       zet_metric_tracer_exp_handle_t metric_tracer_handle;
       result = zetMetricTracerCreateExp(
@@ -793,7 +826,7 @@ TEST_F(
       void *a_buffer, *b_buffer, *c_buffer;
       ze_group_count_t tg;
       ze_kernel_handle_t function = get_matrix_multiplication_kernel(
-          device, &tg, &a_buffer, &b_buffer, &c_buffer);
+          device, &tg, &a_buffer, &b_buffer, &c_buffer, 64);
 
       zeCommandListAppendLaunchKernel(commandList, function, &tg, nullptr, 0,
                                       nullptr);
@@ -826,6 +859,13 @@ TEST_F(
                        "for trace data failed with error code "
                     << result;
       }
+      LOG_DEBUG << "Sleep for 10 seconds";
+      std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+      result = zetMetricTracerDisableExp(metric_tracer_handle, true);
+      ASSERT_EQ(result, ZE_RESULT_SUCCESS)
+          << "zetMetricTracerDisableExp synchronously failed for the "
+             "first tracer "
+             "handle for this device";
 
       /* read data */
       size_t raw_data_size = 0;
@@ -916,6 +956,32 @@ TEST_F(
       LOG_DEBUG << "synchronize with completion of workload";
       lzt::synchronize(commandQueue, std::numeric_limits<uint64_t>::max());
 
+      for (auto metricGroupHandle : device_with_metric_group_handles
+                                        .activatable_metric_group_handle_list) {
+        EXPECT_EQ(ZE_RESULT_SUCCESS, zetMetricGroupGetProperties(
+                                         metricGroupHandle, &metricGroupProp));
+        synchronizedWithHost = true;
+        std::cout << "Metric group name: " << metricGroupProp.name
+                  << ". Metric Domain: " << metricGroupProp.domain << std::endl;
+        EXPECT_EQ(ZE_RESULT_SUCCESS,
+                  zetMetricGroupGetGlobalTimestampsExp(
+                      metricGroupHandle, synchronizedWithHost, &globalTimestamp,
+                      &metricTimestamp));
+        std::cout << "******************* Host timestamp " << globalTimestamp
+                  << ". Metrics timestamp: " << metricTimestamp << std::endl;
+
+        synchronizedWithHost = false;
+        std::cout << "******************* Metric group name: "
+                  << metricGroupProp.name
+                  << ". Metric Domain: " << metricGroupProp.domain << std::endl;
+        EXPECT_EQ(ZE_RESULT_SUCCESS,
+                  zetMetricGroupGetGlobalTimestampsExp(
+                      metricGroupHandle, synchronizedWithHost, &globalTimestamp,
+                      &metricTimestamp));
+        std::cout << "******************* Device timestamp " << globalTimestamp
+                  << ". Metrics timestamp: " << metricTimestamp << std::endl;
+      }
+
       lzt::free_memory(a_buffer);
       lzt::free_memory(b_buffer);
       lzt::free_memory(c_buffer);
@@ -924,12 +990,6 @@ TEST_F(
       result = zetMetricDecoderDestroyExp(metric_decoder_handle);
       ASSERT_EQ(result, ZE_RESULT_SUCCESS)
           << "zetMetricDecoderDestroyExp failed the first tracer "
-             "handle for this device";
-
-      result = zetMetricTracerDisableExp(metric_tracer_handle, true);
-      ASSERT_EQ(result, ZE_RESULT_SUCCESS)
-          << "zetMetricTracerDisableExp synchronously failed for the "
-             "first tracer "
              "handle for this device";
 
       result = zetMetricTracerDestroyExp(metric_tracer_handle);
