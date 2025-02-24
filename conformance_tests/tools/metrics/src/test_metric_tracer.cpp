@@ -324,7 +324,7 @@ executeMatrixMultiplyWorkload(ze_device_handle_t device,
   void *a_buffer, *b_buffer, *c_buffer;
   ze_group_count_t tg;
   ze_kernel_handle_t function = get_matrix_multiplication_kernel(
-      device, &tg, &a_buffer, &b_buffer, &c_buffer);
+      device, &tg, &a_buffer, &b_buffer, &c_buffer, 64);
 
   zeCommandListAppendLaunchKernel(commandList, function, &tg, nullptr, 0,
                                   nullptr);
@@ -793,7 +793,7 @@ TEST_F(
       void *a_buffer, *b_buffer, *c_buffer;
       ze_group_count_t tg;
       ze_kernel_handle_t function = get_matrix_multiplication_kernel(
-          device, &tg, &a_buffer, &b_buffer, &c_buffer);
+          device, &tg, &a_buffer, &b_buffer, &c_buffer, 64);
 
       zeCommandListAppendLaunchKernel(commandList, function, &tg, nullptr, 0,
                                       nullptr);
@@ -826,6 +826,13 @@ TEST_F(
                        "for trace data failed with error code "
                     << result;
       }
+      LOG_DEBUG << "Sleep for 10 seconds";
+      std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+      result = zetMetricTracerDisableExp(metric_tracer_handle, true);
+      ASSERT_EQ(result, ZE_RESULT_SUCCESS)
+          << "zetMetricTracerDisableExp synchronously failed for the "
+             "first tracer "
+             "handle for this device";
 
       /* read data */
       size_t raw_data_size = 0;
@@ -924,12 +931,6 @@ TEST_F(
       result = zetMetricDecoderDestroyExp(metric_decoder_handle);
       ASSERT_EQ(result, ZE_RESULT_SUCCESS)
           << "zetMetricDecoderDestroyExp failed the first tracer "
-             "handle for this device";
-
-      result = zetMetricTracerDisableExp(metric_tracer_handle, true);
-      ASSERT_EQ(result, ZE_RESULT_SUCCESS)
-          << "zetMetricTracerDisableExp synchronously failed for the "
-             "first tracer "
              "handle for this device";
 
       result = zetMetricTracerDestroyExp(metric_tracer_handle);
